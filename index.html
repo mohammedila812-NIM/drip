@@ -6,7 +6,68 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Drip</title>
     <style>
-      html, body, #root { margin: 0; background: transparent; overflow: hidden; }
+      :root {
+        --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+        --ease-spring: cubic-bezier(0.2, 0, 0, 1);
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html, body, #root {
+        margin: 0;
+        padding: 0;
+        background: transparent;
+        overflow: hidden;
+        width: 100%;
+        height: 100%;
+        user-select: none;
+        -webkit-user-select: none;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        text-rendering: optimizeLegibility;
+      }
+      .drip-btn {
+        position: relative;
+        flex: 1;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 9999px;
+        padding: 6px 12px;
+        background: rgba(255, 255, 255, 0.08);
+        backdrop-filter: blur(8px);
+        color: #f5f5f7;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+        font-size: 12px;
+        font-weight: 550;
+        letter-spacing: -0.01em;
+        cursor: pointer;
+        outline: none;
+        user-select: none;
+        box-shadow: inset 0 0.5px 0 0 rgba(255, 255, 255, 0.2), 0 1px 2px rgba(0, 0, 0, 0.2);
+        transition: transform 120ms var(--ease-spring), background-color 140ms ease, border-color 140ms ease, box-shadow 140ms ease, color 140ms ease;
+      }
+      .drip-btn:hover {
+        background: rgba(255, 255, 255, 0.14);
+        border-color: rgba(255, 255, 255, 0.22);
+        color: #ffffff;
+      }
+      .drip-btn:active {
+        transform: scale(0.96);
+        background: rgba(255, 255, 255, 0.06);
+        box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.35);
+      }
+      .drip-btn:focus-visible {
+        border-color: rgba(255, 255, 255, 0.45);
+        box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.25);
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .drip-btn {
+          transition: none !important;
+        }
+      }
     </style>
   </head>
 
