@@ -101,7 +101,7 @@ const ICONS: Record<string, () => React.ReactNode> = {
     </svg>
   ),
   globe: () => (
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
       <circle cx="12" cy="12" r="10" />
       <line x1="2" y1="12" x2="22" y2="12" />
       <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
@@ -289,7 +289,7 @@ const clock = (): Act => {
     side: i?.n.slice(0, 14),
     sub: f?.title.slice(0, 70) || undefined,
     color: f ? hue(f.exe) : undefined,
-    w: f ? 240 : 176,
+    w: f ? 230 : 176,
   };
 };
 
@@ -413,7 +413,7 @@ export default function Island() {
           $("card").style.pointerEvents = "none";
         }
         if (S.exp || pk) {
-          s.dw.t = S.exp && S.big ? Math.max(w, 320) : w;
+          s.dw.t = S.exp && S.big ? Math.max(w, 360) : w;
           s.dh.t = Math.max(40, ih);
           s.dx.t = s.ix.t = s.ar.t = 0;
           s.dy.t = 16 + s.dh.t / 2;
@@ -459,8 +459,10 @@ export default function Island() {
         pw = Math.max(0, s.dw.v),
         ph = Math.max(0, s.dh.v),
         k = cl((s.dy.v - 10) / 26, 0, 1);
+      // Apple continuous squircle corner radius: capped at 26px when expanded, natural half-height capsule when compact
+      const cr = Math.min(Math.min(pw, ph) / 2, 26);
       set("anc", { cx: cx + s.ix.v, rx: 72 - q * 28, ry: Math.max(0, s.ar.v) });
-      set("drop", { x: X - pw / 2, y: s.dy.v - ph / 2, width: pw, height: ph, rx: Math.min(pw, ph) / 2 });
+      set("drop", { x: X - pw / 2, y: s.dy.v - ph / 2, width: pw, height: ph, rx: cr });
       set("neck", {
         x1: cx + s.ix.v,
         y1: 0,
@@ -473,7 +475,7 @@ export default function Island() {
       c.transform = `translate(${X - pw / 2}px,${s.dy.v - ph / 2}px)`;
       c.width = pw + "px";
       c.height = ph + "px";
-      c.borderRadius = Math.min(pw, ph) / 2 + "px";
+      c.borderRadius = cr + "px";
       c.opacity = String(cl((pw - 60) / 80, 0, 1));
       $("in").style.opacity = String(cl((pw - 0.75 * w) / 40, 0, 1) * s.cf.v);
       const moving = Object.values(s).some((o) => Math.abs(o.x) > 0.05 || Math.abs(o.t - o.v) > 0.05);
@@ -581,7 +583,7 @@ export default function Island() {
           overflow: "hidden",
           opacity: 0,
           color: "#ffffff",
-          boxShadow: `inset 0 1px 0.5px 0 color-mix(in srgb, ${a.color ?? "#ffffff"} 32%, transparent), inset 0 0 0 0.5px rgba(255, 255, 255, 0.12), 0 10px 30px rgba(0, 0, 0, 0.5)`,
+          boxShadow: `inset 0 1px 0.5px 0 color-mix(in srgb, ${a.color ?? "#ffffff"} 32%, transparent), inset 0 0 0 0.5px rgba(255, 255, 255, 0.12), 0 12px 32px rgba(0, 0, 0, 0.55)`,
           font: "600 15px -apple-system, BlinkMacSystemFont, 'Segoe UI Variable Display', 'Segoe UI', system-ui, sans-serif",
           pointerEvents: "none",
           cursor: "pointer",
@@ -593,14 +595,15 @@ export default function Island() {
             position: "absolute",
             left: "50%",
             translate: "-50% 0",
-            width: big ? Math.max(w, 320) : w,
-            padding: "0 16px 14px",
+            width: big ? Math.max(w, 360) : w,
+            padding: big ? "13px 22px 15px" : "0 16px",
             boxSizing: "border-box",
             userSelect: "none",
+            transition: "padding 180ms cubic-bezier(0.23, 1, 0.32, 1)",
           }}
         >
           {/* Main Status Row */}
-          <div style={{ display: "flex", alignItems: "center", gap: 10, height: 40 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, height: 38 }}>
             {/* Luminous Icon Capsule */}
             <div
               style={{
@@ -611,7 +614,7 @@ export default function Island() {
                 alignItems: "center",
                 justifyContent: "center",
                 background: a.color
-                  ? `color-mix(in srgb, ${a.color} 22%, rgba(255, 255, 255, 0.08))`
+                  ? `color-mix(in srgb, ${a.color} 20%, rgba(255, 255, 255, 0.08))`
                   : "rgba(255, 255, 255, 0.1)",
                 color: a.color ?? "#ffffff",
                 boxShadow: a.color ? `0 0 10px ${a.color}33` : "none",
@@ -647,40 +650,63 @@ export default function Island() {
                 style={{
                   display: "inline-flex",
                   alignItems: "center",
-                  padding: "2px 8px",
+                  gap: 5,
+                  padding: "3px 9px",
                   borderRadius: 9999,
                   fontSize: 10,
-                  fontWeight: 600,
+                  fontWeight: 650,
                   letterSpacing: "0.04em",
                   textTransform: "uppercase",
-                  color: "rgba(255, 255, 255, 0.75)",
+                  color: "rgba(255, 255, 255, 0.82)",
                   background: "rgba(255, 255, 255, 0.08)",
-                  border: "0.5px solid rgba(255, 255, 255, 0.14)",
-                  backdropFilter: "blur(8px)",
+                  border: "0.5px solid rgba(255, 255, 255, 0.15)",
+                  boxShadow: "0 1px 2px rgba(0, 0, 0, 0.2)",
                   flexShrink: 0,
                 }}
               >
+                {a.color && (
+                  <span
+                    style={{
+                      width: 5,
+                      height: 5,
+                      borderRadius: "50%",
+                      background: a.color,
+                      boxShadow: `0 0 6px ${a.color}`,
+                    }}
+                  />
+                )}
                 {a.side}
               </span>
             )}
           </div>
 
-          {/* Subtitle / Active Context */}
-          {a.sub && (
+          {/* Subtitle / Active Context in dedicated Frosted Well (when expanded or peeking) */}
+          {(big || S.pk > performance.now()) && a.sub && (
             <div
               style={{
-                fontSize: 13,
-                fontWeight: 450,
-                color: "rgba(255, 255, 255, 0.62)",
-                marginTop: 2,
-                lineHeight: 1.35,
-                letterSpacing: "-0.01em",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
+                marginTop: 8,
+                padding: "8px 12px",
+                borderRadius: 12,
+                background: "rgba(255, 255, 255, 0.05)",
+                border: "0.5px solid rgba(255, 255, 255, 0.09)",
+                backdropFilter: "blur(12px)",
               }}
             >
-              {a.sub}
+              <div
+                style={{
+                  fontSize: 13,
+                  fontWeight: 450,
+                  color: "rgba(255, 255, 255, 0.88)",
+                  lineHeight: 1.35,
+                  letterSpacing: "-0.01em",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+                title={a.sub}
+              >
+                {a.sub}
+              </div>
             </div>
           )}
 
@@ -743,10 +769,12 @@ export default function Island() {
                 alignItems: "center",
                 justifyContent: "space-between",
                 fontSize: 11,
-                color: "rgba(255, 255, 255, 0.55)",
+                color: "rgba(255, 255, 255, 0.52)",
+                paddingLeft: 2,
+                paddingRight: 2,
               }}
             >
-              <span style={{ display: "flex", alignItems: "center", gap: 5 }}>
+              <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
                 <span
                   style={{
                     width: 6,
@@ -756,9 +784,22 @@ export default function Island() {
                     boxShadow: `0 0 6px ${a.color ?? "#30d158"}`,
                   }}
                 />
-                Active Target
+                Active Window
               </span>
-              <span style={{ fontVariantNumeric: "tabular-nums" }}>{FG.exe}.exe</span>
+              <code
+                style={{
+                  padding: "2px 7px",
+                  borderRadius: 5,
+                  background: "rgba(255, 255, 255, 0.07)",
+                  border: "0.5px solid rgba(255, 255, 255, 0.1)",
+                  fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+                  fontSize: 11,
+                  color: "rgba(255, 255, 255, 0.8)",
+                  letterSpacing: "-0.01em",
+                }}
+              >
+                {FG.exe}.exe
+              </code>
             </div>
           )}
         </div>
