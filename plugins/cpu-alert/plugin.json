@@ -1,0 +1,1 @@
+{ "name": "CPU Alert", "version": "1.0.0", "exec": ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "cpu.ps1"], "permissions": ["peek"] }

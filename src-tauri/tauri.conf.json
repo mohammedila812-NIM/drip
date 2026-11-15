@@ -1,0 +1,11 @@
+{
+  "productName": "Drip",
+  "version": "0.1.0",
+  "identifier": "dev.drip.app",
+  "build": { "frontendDist": "../dist", "devUrl": "http://localhost:1420", "beforeDevCommand": "npm run dev", "beforeBuildCommand": "npm run build" },
+  "app": {
+    "macOSPrivateApi": true,
+    "windows": [{ "label": "main", "title": "Drip", "width": 480, "height": 220, "transparent": true, "decorations": false, "alwaysOnTop": true, "skipTaskbar": true, "resizable": false, "shadow": false, "focus": false }]
+  },
+  "bundle": { "active": true, "targets": "all" }
+}
