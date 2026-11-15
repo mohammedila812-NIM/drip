@@ -101,7 +101,7 @@ const ICONS: Record<string, () => React.ReactNode> = {
     </svg>
   ),
   globe: () => (
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <circle cx="12" cy="12" r="10" />
       <line x1="2" y1="12" x2="22" y2="12" />
       <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
@@ -324,10 +324,13 @@ export default function Island() {
   const [acts, setActs] = useState<Act[]>([S.cur]);
   const [a, setShown] = useState<Act>(S.cur);
   const [big, setBig] = useState(false);
+  const [pinnedId, setPinnedId] = useState<string | null>(null);
   const [ver, bump] = useState(0);
+
   const setB = (v: boolean) => {
     S.big = v;
     setBig(v);
+    if (!v) setPinnedId(null);
     S.wake();
   };
 
@@ -505,6 +508,8 @@ export default function Island() {
 
     invoke<Fg | null>("fg_now").then((f) => f && onFg(f)).catch(() => {});
     px.load();
+    // Live hot-reload poller: auto-detects new/modified plugins every 8 seconds
+    const pluginPoll = setInterval(() => px.load(), 8000);
     const t = setInterval(() => push(clock()), 30000);
     (navigator as unknown as { getBattery?: () => Promise<{ charging: boolean; level: number; onchargingchange: () => void }> })
       .getBattery?.()
@@ -528,21 +533,25 @@ export default function Island() {
     return () => {
       un.forEach((p) => p.then((f) => f()));
       px.dispose();
+      clearInterval(pluginPoll);
       clearInterval(t);
       cancelAnimationFrame(S.raf);
     };
   }, []);
 
   useEffect(() => {
-    S.want = acts.filter(ok).reduce((x, y) => (y.pri >= x.pri ? y : x));
+    const validActs = acts.filter(ok);
+    const pinned = pinnedId ? validActs.find((x) => x.id === pinnedId) : null;
+    S.want = pinned ?? (validActs.length > 0 ? validActs.reduce((x, y) => (y.pri >= x.pri ? y : x)) : clock());
     if (S.cur.id === S.want.id) {
       S.cur = S.want;
       setShown(S.want);
     }
     S.wake();
-  }, [acts, ver]);
+  }, [acts, ver, pinnedId]);
 
   const w = a.w ?? 200;
+  const activeActs = acts.filter(ok);
 
   return (
     <>
@@ -800,6 +809,55 @@ export default function Island() {
               >
                 {FG.exe}.exe
               </code>
+            </div>
+          )}
+
+          {/* Multi-Activity Switcher Dock: shown when multiple activities/plugins are active */}
+          {big && activeActs.length > 1 && (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                marginTop: 10,
+                paddingTop: 8,
+                borderTop: "0.5px solid rgba(255, 255, 255, 0.08)",
+                overflowX: "auto",
+                scrollbarWidth: "none",
+              }}
+            >
+              {activeActs.map((item) => {
+                const isSelected = item.id === a.id;
+                return (
+                  <button
+                    key={item.id}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      hapticTap("click");
+                      setPinnedId(item.id);
+                    }}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 5,
+                      padding: "3px 9px",
+                      borderRadius: 9999,
+                      background: isSelected ? "rgba(255, 255, 255, 0.2)" : "rgba(255, 255, 255, 0.07)",
+                      border: isSelected ? "1px solid rgba(255, 255, 255, 0.35)" : "0.5px solid rgba(255, 255, 255, 0.12)",
+                      color: isSelected ? "#ffffff" : "rgba(255, 255, 255, 0.68)",
+                      fontSize: 11,
+                      fontWeight: isSelected ? 600 : 500,
+                      cursor: "pointer",
+                      outline: "none",
+                      boxShadow: isSelected ? "0 1px 3px rgba(0,0,0,0.3)" : "none",
+                      transition: "all 140ms ease",
+                    }}
+                  >
+                    <span style={{ display: "inline-flex", alignItems: "center" }}>{renderIcon(item.icon)}</span>
+                    <span>{item.side || item.title.slice(0, 10)}</span>
+                  </button>
+                );
+              })}
             </div>
           )}
         </div>
