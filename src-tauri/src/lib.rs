@@ -51,7 +51,7 @@ mod fg {
             let covers = r.left <= m.left && r.top <= m.top && r.right >= m.right && r.bottom >= m.bottom;
             let qs = SHQueryUserNotificationState().ok();
             // fullscreen = covers the whole monitor without being merely maximized, or Windows says a game / presentation owns the screen
-            let full = !shell && ((covers && !max) || qs.map_or(false, |s| [QUNS_BUSY, QUNS_RUNNING_D3D_FULL_SCREEN, QUNS_PRESENTATION_MODE].contains(&s)));
+            let full = !shell && ((covers && !max) || qs.is_some_and(|s| [QUNS_BUSY, QUNS_RUNNING_D3D_FULL_SCREEN, QUNS_PRESENTATION_MODE].contains(&s)));
             // top = a window is sitting under the island zone (top edge of the monitor, spanning its centre)
             let mc = (m.left + m.right) / 2;
             let top = !shell && r.top <= m.top + 12 && r.left <= mc - 300 && r.right >= mc + 300;
@@ -149,21 +149,21 @@ pub fn run() {
                     let mut ms = 120;
                     if probe_at.elapsed() >= Duration::from_millis(250) {
                         probe_at = Instant::now();
-                        if let Some(f) = fg::probe(me) {
-                            if f != last_fg {
-                                let nf = f["full"].as_bool().unwrap_or(false);
-                                // fullscreen: drop out of the topmost band so games keep their direct-flip path; restore afterwards
-                                if nf != full { full = nf; let _ = w.set_always_on_top(!full); }
-                                // follow the foreground window to its monitor
-                                let m = (f["mon"][0].as_i64().unwrap_or(0) as i32, f["mon"][1].as_i64().unwrap_or(0) as i32);
-                                if m != mon {
-                                    mon = m;
-                                    if let Ok(all) = w.available_monitors() { if let Some(t) = all.iter().find(|t| (t.position().x, t.position().y) == m) { dock(&w, t); } }
+                        if let Some(f) = fg::probe(me).filter(|f| *f != last_fg) {
+                            let nf = f["full"].as_bool().unwrap_or(false);
+                            // fullscreen: drop out of the topmost band so games keep their direct-flip path; restore afterwards
+                            if nf != full { full = nf; let _ = w.set_always_on_top(!full); }
+                            // follow the foreground window to its monitor
+                            let m = (f["mon"][0].as_i64().unwrap_or(0) as i32, f["mon"][1].as_i64().unwrap_or(0) as i32);
+                            if m != mon {
+                                mon = m;
+                                if let Some(t) = w.available_monitors().ok().and_then(|all| all.into_iter().find(|t| (t.position().x, t.position().y) == m)) {
+                                    dock(&w, &t);
                                 }
-                                *h.state::<Fg>().0.lock().unwrap() = f.clone();
-                                let _ = w.emit("island:fg", &f);
-                                last_fg = f;
                             }
+                            *h.state::<Fg>().0.lock().unwrap() = f.clone();
+                            let _ = w.emit("island:fg", &f);
+                            last_fg = f;
                         }
                     }
                     if full { ms = 250; }   // nothing to track behind a fullscreen app
