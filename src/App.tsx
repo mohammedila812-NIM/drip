@@ -7,6 +7,9 @@ import { listen, emit } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { startPlugins } from "./plugins";
+import { triggerHapticTap } from "./lib/haptics";
+import { alpha } from "./lib/color";
+import { ActStore } from "./lib/acts";
 
 // peek: ms to auto-open without hover; when: only eligible while the foreground exe matches this regex
 export type Act = {
@@ -195,47 +198,7 @@ function renderIcon(icon?: string) {
 
 // Multimodal feedback: micro-haptic synthesized audio impulse
 function hapticTap(type: "snap" | "click" | "pop" = "click") {
-  if (RM) return;
-  try {
-    const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-    if (!AudioContextClass) return;
-    const ctx = new AudioContextClass();
-    const now = ctx.currentTime;
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-
-    if (type === "click") {
-      osc.type = "sine";
-      osc.frequency.setValueAtTime(650, now);
-      osc.frequency.exponentialRampToValueAtTime(180, now + 0.018);
-      gain.gain.setValueAtTime(0.025, now);
-      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.018);
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start(now);
-      osc.stop(now + 0.018);
-    } else if (type === "snap") {
-      osc.type = "triangle";
-      osc.frequency.setValueAtTime(140, now);
-      osc.frequency.exponentialRampToValueAtTime(55, now + 0.035);
-      gain.gain.setValueAtTime(0.04, now);
-      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.035);
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start(now);
-      osc.stop(now + 0.035);
-    } else if (type === "pop") {
-      osc.type = "sine";
-      osc.frequency.setValueAtTime(420, now);
-      osc.frequency.exponentialRampToValueAtTime(260, now + 0.025);
-      gain.gain.setValueAtTime(0.03, now);
-      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.025);
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start(now);
-      osc.stop(now + 0.025);
-    }
-  } catch {}
+  triggerHapticTap(type);
 }
 
 const info = (f: Fg) => {
@@ -302,10 +265,22 @@ const init = () => {
 };
 
 export default function Island() {
-  const S = useRef(init()).current;
+  const sRef = useRef<ReturnType<typeof init> | null>(null);
+  if (!sRef.current) {
+    sRef.current = init();
+  }
+  const S = sRef.current;
+
+  const actStore = useRef<ActStore | null>(null);
+  if (!actStore.current) {
+    actStore.current = new ActStore();
+    actStore.current.upsert(S.cur);
+  }
+
   const [acts, setActs] = useState<Act[]>([S.cur]);
   const [a, setShown] = useState<Act>(S.cur);
   const [big, setBig] = useState(false);
+  const [peeking, setPeeking] = useState(false);
   const [pinnedId, setPinnedId] = useState<string | null>(null);
   const [ver, bump] = useState(0);
 
@@ -325,22 +300,41 @@ export default function Island() {
       if (!RM) s[k].x += v;
     };
     // <motion:end KICK>
+    let peekTimer: number | undefined;
     const peek = (ms: number) => {
       if (S.off) return;
-      S.pk = performance.now() + Math.min(ms, 10000);
+      const duration = Math.min(ms, 10000);
+      S.pk = performance.now() + duration;
+      setPeeking(true);
+      window.clearTimeout(peekTimer);
+      peekTimer = window.setTimeout(() => {
+        setPeeking(false);
+        S.wake();
+      }, duration);
       S.wake();
-      setTimeout(S.wake, Math.min(ms, 10000) + 50);
     };
     const push = (x: Act) => {
-      setActs((l) => [...l.filter((i) => i.id !== x.id), x]);
+      const { acts: nextActs } = actStore.current!.upsert(x);
+      setActs(nextActs);
       clearTimeout(T.get(x.id));
-      if (x.ttl) T.set(x.id, window.setTimeout(() => setActs((l) => l.filter((i) => i.id !== x.id)), x.ttl));
+      if (x.ttl) {
+        T.set(
+          x.id,
+          window.setTimeout(() => {
+            const { acts: rem } = actStore.current!.remove(x.id);
+            setActs(rem);
+          }, x.ttl)
+        );
+      }
       if (x.peek) peek(x.peek);
     };
     const px = (S.px = startPlugins({
       push,
       peek,
-      clear: (id, pre) => setActs((l) => l.filter((i) => (pre ? !i.id.startsWith(id) : i.id !== id))),
+      clear: (id, pre) => {
+        const { acts: rem } = actStore.current!.remove(id, pre);
+        setActs(rem);
+      },
     }));
 
     const onFg = (f: Fg) => {
@@ -489,7 +483,10 @@ export default function Island() {
         S.wake();
       }),
       listen<Act>("island:push", (e) => push(e.payload)),
-      listen<string>("island:clear", (e) => setActs((l) => l.filter((i) => i.id !== e.payload))),
+      listen<string>("island:clear", (e) => {
+        const { acts: rem } = actStore.current!.remove(e.payload);
+        setActs(rem);
+      }),
       listen<Fg>("island:fg", (e) => onFg(e.payload)),
       listen("island:reload", () => px.load()),
     ];
@@ -519,6 +516,7 @@ export default function Island() {
       });
 
     return () => {
+      window.clearTimeout(peekTimer);
       un.forEach((p) => p.then((f) => f()));
       px.dispose();
       clearInterval(pluginPoll);
@@ -528,9 +526,7 @@ export default function Island() {
   }, []);
 
   useEffect(() => {
-    const validActs = acts.filter(ok);
-    const pinned = pinnedId ? validActs.find((x) => x.id === pinnedId) : null;
-    S.want = pinned ?? (validActs.length > 0 ? validActs.reduce((x, y) => (y.pri >= x.pri ? y : x)) : clock());
+    S.want = actStore.current!.select(ok, pinnedId, clock());
     if (S.cur.id === S.want.id) {
       S.cur = S.want;
       setShown(S.want);
@@ -582,7 +578,7 @@ export default function Island() {
           overflow: "hidden",
           opacity: 0,
           color: "#ffffff",
-          boxShadow: `inset 0 1px 0.5px 0 color-mix(in srgb, ${a.color ?? "#ffffff"} 32%, transparent), inset 0 0 0 0.5px rgba(255, 255, 255, 0.12), 0 12px 32px rgba(0, 0, 0, 0.55)`,
+          boxShadow: `inset 0 1px 0.5px 0 ${alpha(a.color ?? "#ffffff", 0.32)}, inset 0 0 0 0.5px rgba(255, 255, 255, 0.12), 0 12px 32px rgba(0, 0, 0, 0.55)`,
           font: "600 15px -apple-system, BlinkMacSystemFont, 'Segoe UI Variable Display', 'Segoe UI', system-ui, sans-serif",
           pointerEvents: "none",
           cursor: "pointer",
@@ -595,10 +591,14 @@ export default function Island() {
             left: "50%",
             translate: "-50% 0",
             width: big ? Math.max(w, 360) : w,
-            padding: big ? "13px 22px 15px" : "0 16px",
+            padding: big
+              ? "13px 22px 15px"
+              : peeking && (a.p != null || a.actions)
+              ? "10px 18px 14px"
+              : "0 16px",
             boxSizing: "border-box",
             userSelect: "none",
-            transition: "padding 180ms cubic-bezier(0.23, 1, 0.32, 1)",
+            transition: "none",
           }}
         >
           {/* Main Status Row */}
@@ -613,10 +613,10 @@ export default function Island() {
                 alignItems: "center",
                 justifyContent: "center",
                 background: a.color
-                  ? `color-mix(in srgb, ${a.color} 20%, rgba(255, 255, 255, 0.08))`
+                  ? alpha(a.color, 0.2)
                   : "rgba(255, 255, 255, 0.1)",
                 color: a.color ?? "#ffffff",
-                boxShadow: a.color ? `0 0 10px ${a.color}33` : "none",
+                boxShadow: a.color ? `0 0 10px ${alpha(a.color, 0.2)}` : "none",
                 flexShrink: 0,
                 transition: "background-color 200ms ease, color 200ms ease",
               }}
@@ -680,7 +680,7 @@ export default function Island() {
           </div>
 
           {/* Subtitle / Active Context in dedicated Frosted Well (when expanded or peeking) */}
-          {(big || S.pk > performance.now()) && a.sub && (
+          {(big || peeking) && a.sub && (
             <div
               style={{
                 marginTop: 8,
@@ -727,9 +727,11 @@ export default function Island() {
                     width: `${cl(a.p * 100, 0, 100)}%`,
                     borderRadius: 9999,
                     background: a.color
-                      ? `linear-gradient(90deg, ${a.color}cc, ${a.color})`
-                      : "linear-gradient(90deg, #30d158cc, #30d158)",
-                    boxShadow: a.color ? `0 0 8px ${a.color}88` : "0 0 8px rgba(48, 209, 88, 0.6)",
+                      ? `linear-gradient(90deg, ${alpha(a.color, 0.8)}, ${a.color})`
+                      : `linear-gradient(90deg, ${alpha("#30d158", 0.8)}, #30d158)`,
+                    boxShadow: a.color
+                      ? `0 0 8px ${alpha(a.color, 0.53)}`
+                      : `0 0 8px ${alpha("#30d158", 0.53)}`,
                     transition: "width 280ms cubic-bezier(0.23, 1, 0.32, 1)",
                   }}
                 />

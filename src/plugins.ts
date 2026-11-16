@@ -7,6 +7,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { Act } from "./App";
+import { TokenBucketRateLimiter } from "./lib/rateLimit";
 
 export type Man = {
   id: string;
@@ -179,7 +180,10 @@ export const BUILTIN_PLUGINS: Man[] = [
 
 export function startPlugins(h: Host) {
   const live = new Map<string, Live>();
+  const limiters = new Map<string, TokenBucketRateLimiter>();
   let fg: unknown = null;
+  let disposed = false;
+  let loadGen = 0;
   const can = (m: Man, p: string) => !!m.permissions?.includes(p);
   const str = (v: unknown, n: number) => (typeof v === "string" ? v.slice(0, n) : undefined);
   const num = (v: unknown, lo: number, hi: number) =>
@@ -206,6 +210,15 @@ export function startPlugins(h: Host) {
 
   const onMsg = (m: Man, d: any) => {
     if (!d || typeof d !== "object") return;
+    let limiter = limiters.get(m.id);
+    if (!limiter) {
+      limiter = new TokenBucketRateLimiter(20, 50);
+      limiters.set(m.id, limiter);
+    }
+    if (!limiter.consume()) {
+      console.warn(`[drip:${m.id}] rate limit exceeded, dropped message (total dropped: ${limiter.getDroppedCount()})`);
+      return;
+    }
     if ("push" in d) {
       const a = clean(m, d.push);
       a && h.push(a);
@@ -293,7 +306,17 @@ export function startPlugins(h: Host) {
   return {
     // Differential auto-reconciliation: auto-detects new/modified plugins without restarting unchanged ones
     async load() {
-      const diskList = await invoke<Man[]>("plugins_list").catch(() => [] as Man[]);
+      if (disposed) return;
+      const gen = ++loadGen;
+      let diskList: Man[];
+      try {
+        diskList = await invoke<Man[]>("plugins_list");
+      } catch (e) {
+        console.warn("[drip:plugins] failed to list plugins; keeping current running plugins:", e);
+        return;
+      }
+      if (disposed || gen !== loadGen) return;
+
       const diskIds = new Set(diskList.map((m) => m.id));
       const allPlugins = [...diskList, ...BUILTIN_PLUGINS.filter((b) => !diskIds.has(b.id))];
       const nextIds = new Set(allPlugins.filter((m) => m.enabled !== false).map((m) => m.id));
@@ -304,6 +327,7 @@ export function startPlugins(h: Host) {
           p.kill();
           h.clear(id + ":", true);
           live.delete(id);
+          limiters.delete(id);
         }
       }
 
@@ -334,7 +358,10 @@ export function startPlugins(h: Host) {
       }
     },
     dispose() {
+      disposed = true;
+      loadGen++;
       stopAll();
+      limiters.clear();
       un.then((f) => f());
     },
   };
