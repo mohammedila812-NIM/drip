@@ -1,9 +1,9 @@
 // Quick Scratchpad: Ambient reminders, quick tips, and productivity cues
 const NOTES = [
-  "Hydrate: Drink a fresh glass of water 💧",
-  "Posture check: Relax shoulders & stretch spine 🧘",
-  "Review active Git branch & uncommitted changes 💻",
-  "Single-task: Finish the current objective first 🎯"
+  "Hydrate: Drink a fresh glass of water",
+  "Posture check: Relax shoulders & stretch spine",
+  "Review active Git branch & uncommitted changes",
+  "Single-task: Finish the current objective first"
 ];
 let idx = 0;
 

@@ -147,10 +147,10 @@ export const BUILTIN_PLUGINS: Man[] = [
     permissions: ["peek"],
     code: `
       const NOTES = [
-        "Hydrate: Drink a fresh glass of water 💧",
-        "Posture check: Relax shoulders & spine 🧘",
-        "Review Git branch & uncommitted diffs 💻",
-        "High-priority focus: Keep single-tasking 🎯"
+        "Hydrate: Drink a fresh glass of water",
+        "Posture check: Relax shoulders & spine",
+        "Review Git branch & uncommitted diffs",
+        "High-priority focus: Keep single-tasking"
       ];
       let idx = 0;
       function show() {

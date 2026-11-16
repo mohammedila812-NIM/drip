@@ -35,6 +35,7 @@ export type Fg = {
 };
 
 // [stiffness, damping] per spring: loose droplet, jelly pill, tight cursor smoothing
+// <motion:begin K_TABLE>
 const K = {
   ix: [180, 16],
   dx: [110, 9],
@@ -49,6 +50,7 @@ const K = {
 
 type Key = keyof typeof K;
 type Sp = { v: number; t: number; x: number };
+// <motion:end K_TABLE>
 const RM = typeof matchMedia !== "undefined" && matchMedia("(prefers-reduced-motion:reduce)").matches;
 const cl = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 const $ = (id: string) => document.getElementById(id)!;
@@ -182,29 +184,9 @@ const ICONS: Record<string, () => React.ReactNode> = {
   ),
 };
 
-const EMOJI_MAP: Record<string, string> = {
-  "🕓": "clock",
-  "⚡": "battery",
-  "🌐": "globe",
-  "🦊": "globe",
-  "🦁": "globe",
-  "🧑‍💻": "code",
-  "📁": "folder",
-  "🎵": "music",
-  "💬": "chat",
-  "⌨️": "terminal",
-  "📝": "doc",
-  "📊": "chart",
-  "📽️": "presentation",
-  "🗒️": "doc",
-  "🎬": "video",
-  "🎮": "game",
-  "🪟": "window",
-};
-
 function renderIcon(icon?: string) {
   if (!icon) return null;
-  const key = ICONS[icon] ? icon : EMOJI_MAP[icon];
+  const key = ICONS[icon] ? icon : undefined;
   if (key && ICONS[key]) {
     return ICONS[key]();
   }
@@ -338,9 +320,11 @@ export default function Island() {
     const win = getCurrentWindow(),
       s = S.sp,
       T = new Map<string, number>();
+    // <motion:begin KICK>
     const kick = (k: Key, v: number) => {
       if (!RM) s[k].x += v;
     };
+    // <motion:end KICK>
     const peek = (ms: number) => {
       if (S.off) return;
       S.pk = performance.now() + Math.min(ms, 10000);
@@ -374,6 +358,7 @@ export default function Island() {
     s.sy.v = s.sy.t = S.my;
     let last = 0;
 
+    // <motion:begin TICK>
     const tick = (now: number) => {
       const dt = Math.min((now - last) / 1000, 1 / 30);
       last = now;
@@ -485,13 +470,16 @@ export default function Island() {
       $("g").setAttribute("filter", moving ? "url(#goo)" : "none");
       S.raf = moving || S.cur !== S.want ? requestAnimationFrame(tick) : 0;
     };
+    // <motion:end TICK>
 
+    // <motion:begin WAKE>
     S.wake = () => {
       if (!S.raf) {
         last = performance.now();
         S.raf = requestAnimationFrame(tick);
       }
     };
+    // <motion:end WAKE>
 
     const un = [
       listen<[number, number]>("cursor", ({ payload: [x, y] }) => {
@@ -555,6 +543,7 @@ export default function Island() {
 
   return (
     <>
+      {/* <motion:begin SVG_BLOB> */}
       <svg
         style={{
           position: "fixed",
@@ -578,6 +567,7 @@ export default function Island() {
           <rect id="drop" stroke="none" />
         </g>
       </svg>
+      {/* <motion:end SVG_BLOB> */}
 
       <div
         id="card"
