@@ -22,7 +22,16 @@ jobs:
       - run: npx tsc --noEmit
       - run: npm test
       - run: npm run check:motion
+      - run: node scripts/check-emoji.mjs
+      - run: cargo test --manifest-path src-tauri/Cargo.toml
       - run: cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings
+      - run: npx playwright install chromium
+      - run: npm run test:motion-trace
+      - uses: actions/upload-artifact@v4
+        with:
+          name: motion-trace-screenshots
+          path: e2e/out/*.png
+          if-no-files-found: ignore
       - run: npm run tauri -- build --bundles nsis
       - uses: actions/upload-artifact@v4
         with:

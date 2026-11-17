@@ -10,6 +10,7 @@ import { startPlugins } from "./plugins";
 import { triggerHapticTap } from "./lib/haptics";
 import { alpha } from "./lib/color";
 import { ActStore } from "./lib/acts";
+import { redactFg } from "./lib/redact";
 
 // peek: ms to auto-open without hover; when: only eligible while the foreground exe matches this regex
 export type Act = {
@@ -314,15 +315,15 @@ export default function Island() {
       S.wake();
     };
     const push = (x: Act) => {
-      const { acts: nextActs } = actStore.current!.upsert(x);
-      setActs(nextActs);
+      const { acts: nextActs, changed } = actStore.current!.upsert(x);
+      if (changed) setActs(nextActs);
       clearTimeout(T.get(x.id));
       if (x.ttl) {
         T.set(
           x.id,
           window.setTimeout(() => {
-            const { acts: rem } = actStore.current!.remove(x.id);
-            setActs(rem);
+            const { acts: rem, changed: remChanged } = actStore.current!.remove(x.id);
+            if (remChanged) setActs(rem);
           }, x.ttl)
         );
       }
@@ -332,17 +333,22 @@ export default function Island() {
       push,
       peek,
       clear: (id, pre) => {
-        const { acts: rem } = actStore.current!.remove(id, pre);
-        setActs(rem);
+        const { acts: rem, changed: remChanged } = actStore.current!.remove(id, pre);
+        if (remChanged) setActs(rem);
       },
     }));
 
     const onFg = (f: Fg) => {
-      FG = f;
-      S.off = f.full;
-      S.edge = MODE === "edge" || (MODE === "auto" && f.top);
+      let hideTitles = false;
+      try {
+        hideTitles = localStorage.getItem("drip.hideTitles") === "1";
+      } catch {}
+      const cleanFg = redactFg(f, hideTitles);
+      FG = cleanFg;
+      S.off = cleanFg.full;
+      S.edge = MODE === "edge" || (MODE === "auto" && cleanFg.top);
       if (!S.edge) S.eng = false;
-      px.fg(f);
+      px.fg(cleanFg);
       push(clock());
       bump((n) => n + 1);
       S.wake();
@@ -484,17 +490,16 @@ export default function Island() {
       }),
       listen<Act>("island:push", (e) => push(e.payload)),
       listen<string>("island:clear", (e) => {
-        const { acts: rem } = actStore.current!.remove(e.payload);
-        setActs(rem);
+        const { acts: rem, changed: remChanged } = actStore.current!.remove(e.payload);
+        if (remChanged) setActs(rem);
       }),
       listen<Fg>("island:fg", (e) => onFg(e.payload)),
       listen("island:reload", () => px.load()),
+      listen("island:plugins-changed", () => px.load()),
     ];
 
     invoke<Fg | null>("fg_now").then((f) => f && onFg(f)).catch(() => {});
     px.load();
-    // Live hot-reload poller: auto-detects new/modified plugins every 8 seconds
-    const pluginPoll = setInterval(() => px.load(), 8000);
     const t = setInterval(() => push(clock()), 30000);
     (navigator as unknown as { getBattery?: () => Promise<{ charging: boolean; level: number; onchargingchange: () => void }> })
       .getBattery?.()
@@ -519,7 +524,6 @@ export default function Island() {
       window.clearTimeout(peekTimer);
       un.forEach((p) => p.then((f) => f()));
       px.dispose();
-      clearInterval(pluginPoll);
       clearInterval(t);
       cancelAnimationFrame(S.raf);
     };
@@ -593,12 +597,12 @@ export default function Island() {
             width: big ? Math.max(w, 360) : w,
             padding: big
               ? "13px 22px 15px"
-              : peeking && (a.p != null || a.actions)
+              : peeking && (a.sub || a.p != null || a.actions)
               ? "10px 18px 14px"
               : "0 16px",
             boxSizing: "border-box",
             userSelect: "none",
-            transition: "none",
+            transition: "padding 180ms cubic-bezier(0.23, 1, 0.32, 1)",
           }}
         >
           {/* Main Status Row */}

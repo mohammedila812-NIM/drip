@@ -11,12 +11,14 @@ import { TokenBucketRateLimiter } from "./lib/rateLimit";
 
 export type Man = {
   id: string;
+  hash?: string;
   name?: string;
   main?: string;
   exec?: string[];
   code?: string;
   permissions?: string[];
   enabled?: boolean;
+  error?: string;
 };
 
 export type Host = {
@@ -29,7 +31,7 @@ type Live = {
   m: Man;
   post(x: unknown): void;
   kill(): void;
-  _codeKey?: string;
+  _hash?: string;
 };
 
 // worker prelude = the whole plugin API: drip.push / clear / peek / on("action"|"fg") / every / store.get / store.set
@@ -46,6 +48,7 @@ export const BUILTIN_PLUGINS: Man[] = [
     name: "Focus Timer",
     main: "index.js",
     permissions: ["peek"],
+    hash: "builtin:focus-timer",
     code: `
       const LEN = 25 * 60;
       let end = 0, paused = 0, rem = LEN;
@@ -120,48 +123,49 @@ export const BUILTIN_PLUGINS: Man[] = [
       drip.every(1000, () => {
         if (!end || paused) return;
         const s = Math.max(0, Math.round((end - Date.now()) / 1000));
-        if (s <= 0) {
-          end = 0; rem = LEN;
-          drip.clear("run");
+        if (s === 0) {
+          end = 0;
           drip.push({
-            id: "done",
-            pri: 8,
+            id: "run",
+            pri: 5,
             icon: "clock",
-            title: "Break Time",
-            side: "Complete",
+            title: "Done!",
+            side: "Break",
+            p: 1,
             color: "#30d158",
-            ttl: 9000,
-            peek: 5000,
-            sub: "Well done! Take a restorative 5-minute break."
+            w: 230,
+            actions: ["Restart", "Dismiss"],
+            sub: "Time for a 5-minute break",
+            peek: 5000
           });
-          setTimeout(() => showOffer(), 9500);
-          return;
+        } else {
+          updateRun();
         }
-        updateRun();
       });
     `
   },
   {
-    id: "quick-notes",
-    name: "Quick Scratchpad",
+    id: "scratchpad",
+    name: "Scratchpad",
     main: "index.js",
-    permissions: ["peek"],
+    permissions: [],
+    hash: "builtin:scratchpad",
     code: `
       const NOTES = [
-        "Hydrate: Drink a fresh glass of water",
-        "Posture check: Relax shoulders & spine",
-        "Review Git branch & uncommitted diffs",
-        "High-priority focus: Keep single-tasking"
+        "Drink a glass of water",
+        "Stretch and fix posture",
+        "Review today's goals",
+        "Deep breath, stay focused"
       ];
-      let idx = 0;
+      let idx = drip.store.get("idx") || 0;
       function show() {
+        drip.store.set("idx", idx);
         drip.push({
           id: "note",
-          pri: 3,
-          icon: "doc",
-          title: "Scratchpad",
+          pri: 1,
+          icon: "info",
+          title: NOTES[idx],
           side: (idx + 1) + "/" + NOTES.length,
-          sub: NOTES[idx],
           color: "#0a84ff",
           w: 240,
           actions: ["Next"]
@@ -215,24 +219,30 @@ export function startPlugins(h: Host) {
       limiter = new TokenBucketRateLimiter(20, 50);
       limiters.set(m.id, limiter);
     }
-    if (!limiter.consume()) {
-      console.warn(`[drip:${m.id}] rate limit exceeded, dropped message (total dropped: ${limiter.getDroppedCount()})`);
-      return;
-    }
     if ("push" in d) {
       const a = clean(m, d.push);
-      a && h.push(a);
+      if (a) {
+        limiter.submit("push", a.id, a, (act) => h.push(act));
+      }
     } else if ("clear" in d) {
-      h.clear(m.id + ":" + String(d.clear).slice(0, 40));
+      const clearId = m.id + ":" + String(d.clear).slice(0, 40);
+      limiter.submit("clear", clearId, clearId, (id) => h.clear(id));
+    } else if ("action" in d) {
+      limiter.submit("action", undefined, d.action, () => {});
     } else if ("peek" in d) {
-      if (can(m, "peek")) h.peek(num(d.peek, 500, 10000) ?? 3000);
+      if (can(m, "peek")) {
+        const ms = num(d.peek, 500, 10000) ?? 3000;
+        limiter.submit("peek", undefined, ms, (val) => h.peek(val));
+      }
     } else if ("store" in d && Array.isArray(d.store)) {
       try {
         localStorage.setItem(`drip:${m.id}:${String(d.store[0]).slice(0, 40)}`, JSON.stringify(d.store[1]));
       } catch {}
     } else if (typeof d.title === "string") {
       const a = clean(m, d);
-      a && h.push(a);
+      if (a) {
+        limiter.submit("push", a.id, a, (act) => h.push(act));
+      }
     }
   };
 
@@ -240,7 +250,7 @@ export function startPlugins(h: Host) {
     if (fg && can(p.m, "fg")) p.post({ ev: "fg", data: fg });
   };
 
-  const run = (m: Man, codeKey?: string) => {
+  const run = (m: Man, hashKey?: string) => {
     if (typeof m.main === "string" && typeof m.code === "string") {
       const url = URL.createObjectURL(new Blob([PRE + "\n" + m.code], { type: "text/javascript" }));
       const w = new Worker(url),
@@ -263,7 +273,7 @@ export function startPlugins(h: Host) {
           w.terminate();
           URL.revokeObjectURL(url);
         },
-        _codeKey: codeKey,
+        _hash: hashKey,
       };
       live.set(m.id, p);
       p.post({ init: { store } });
@@ -277,7 +287,7 @@ export function startPlugins(h: Host) {
         kill: () => {
           invoke("plugin_stop", { id: m.id }).catch(() => {});
         },
-        _codeKey: codeKey,
+        _hash: hashKey,
       };
       live.set(m.id, p);
       invoke("plugin_run", { id: m.id })
@@ -294,13 +304,24 @@ export function startPlugins(h: Host) {
     live.clear();
   };
 
-  const un = listen<{ id: string; line: string }>("island:plugin", (e) => {
+  const unPlugin = listen<{ id: string; line: string }>("island:plugin", (e) => {
     const p = live.get(e.payload.id);
     if (p) {
       try {
         onMsg(p.m, JSON.parse(e.payload.line));
       } catch {}
     }
+  });
+
+  const unExit = listen<{ id: string; code?: number }>("island:plugin-exit", (e) => {
+    const { id, code } = e.payload;
+    console.log("[drip:plugin-exit]", id, code);
+    const p = live.get(id);
+    if (p) {
+      p.kill();
+      live.delete(id);
+    }
+    h.clear(id + ":", true);
   });
 
   return {
@@ -319,32 +340,55 @@ export function startPlugins(h: Host) {
 
       const diskIds = new Set(diskList.map((m) => m.id));
       const allPlugins = [...diskList, ...BUILTIN_PLUGINS.filter((b) => !diskIds.has(b.id))];
-      const nextIds = new Set(allPlugins.filter((m) => m.enabled !== false).map((m) => m.id));
+      const nextIds = new Set(allPlugins.filter((m) => m.enabled !== false && !m.error).map((m) => m.id));
 
-      // Remove deleted/disabled plugins
+      // Remove deleted, disabled, or broken plugins
       for (const [id, p] of live.entries()) {
         if (!nextIds.has(id)) {
           p.kill();
           h.clear(id + ":", true);
           live.delete(id);
-          limiters.delete(id);
+          const lim = limiters.get(id);
+          if (lim) {
+            lim.dispose();
+            limiters.delete(id);
+          }
         }
       }
 
       // Add new or update modified plugins
       for (const m of allPlugins) {
         if (m.enabled === false) continue;
-        const codeKey = (m.code ?? "") + (m.exec ? JSON.stringify(m.exec) : "");
-        const existing = live.get(m.id);
-        if (existing) {
-          if (existing._codeKey !== codeKey) {
-            existing.kill();
-            h.clear(m.id + ":", true);
-            run(m, codeKey);
-          }
-        } else {
-          run(m, codeKey);
+        if (m.error) {
+          console.warn(`[drip:${m.id}] plugin error: ${m.error}`);
+          continue;
         }
+
+        const hashKey = m.hash ?? (m.code ?? "") + (m.exec ? JSON.stringify(m.exec) : "");
+        const existing = live.get(m.id);
+
+        if (existing) {
+          if (existing._hash === hashKey) {
+            // Unchanged: keep running
+            continue;
+          }
+          // Modified: kill old instance and acts
+          existing.kill();
+          h.clear(m.id + ":", true);
+          live.delete(m.id);
+        }
+
+        // Fetch code if required and not yet present
+        if (m.main && !m.code) {
+          try {
+            m.code = await invoke<string>("plugin_code", { id: m.id });
+          } catch (e) {
+            console.warn(`[drip:${m.id}] failed to load plugin code:`, e);
+            continue;
+          }
+        }
+
+        run(m, hashKey);
       }
     },
     fg(f: unknown) {
@@ -361,8 +405,12 @@ export function startPlugins(h: Host) {
       disposed = true;
       loadGen++;
       stopAll();
+      for (const lim of limiters.values()) {
+        lim.dispose();
+      }
       limiters.clear();
-      un.then((f) => f());
+      unPlugin.then((f) => f());
+      unExit.then((f) => f());
     },
   };
 }

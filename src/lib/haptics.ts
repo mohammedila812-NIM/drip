@@ -2,6 +2,7 @@ export type HapticType = "snap" | "click" | "pop";
 
 let sharedCtx: AudioContext | null = null;
 let listenerAttached = false;
+let currentResumeHandler: (() => void) | null = null;
 
 export function isSoundEnabled(): boolean {
   try {
@@ -29,18 +30,34 @@ export function getAudioContext(): AudioContext | null {
   }
   if (sharedCtx && !listenerAttached && typeof window !== "undefined") {
     listenerAttached = true;
-    const resume = () => {
-      if (sharedCtx && sharedCtx.state === "suspended") {
-        sharedCtx.resume().catch(() => {});
+    const resume = async () => {
+      if (!sharedCtx) return;
+      if (sharedCtx.state === "suspended") {
+        try {
+          await sharedCtx.resume();
+          window.removeEventListener("pointerdown", resume);
+          listenerAttached = false;
+          currentResumeHandler = null;
+        } catch {
+          // If resume() rejects, keep the pointerdown listener for the next gesture
+        }
+      } else {
+        window.removeEventListener("pointerdown", resume);
+        listenerAttached = false;
+        currentResumeHandler = null;
       }
-      window.removeEventListener("pointerdown", resume);
     };
-    window.addEventListener("pointerdown", resume, { once: true });
+    currentResumeHandler = resume;
+    window.addEventListener("pointerdown", resume);
   }
   return sharedCtx;
 }
 
 export function _resetHapticsState(): void {
+  if (currentResumeHandler && typeof window !== "undefined") {
+    window.removeEventListener("pointerdown", currentResumeHandler);
+    currentResumeHandler = null;
+  }
   sharedCtx = null;
   listenerAttached = false;
 }
