@@ -25,6 +25,7 @@ jobs:
       - run: node scripts/check-emoji.mjs
       - run: cargo test --manifest-path src-tauri/Cargo.toml
       - run: cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings
+      - run: npm run build
       - run: npx playwright install chromium
       - run: npm run test:motion-trace
       - uses: actions/upload-artifact@v4

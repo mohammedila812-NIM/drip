@@ -1,6 +1,7 @@
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
+import { execSync } from "node:child_process";
 import { chromium } from "@playwright/test";
 
 function createStaticServer(dir, port) {
@@ -387,6 +388,12 @@ async function runHarness(url, buildName, outDir) {
 }
 
 async function main() {
+  const currentDistIndex = path.resolve("dist/index.html");
+  if (!fs.existsSync(currentDistIndex)) {
+    console.log("Building dist for motion trace test...");
+    execSync("npm run build", { stdio: "inherit" });
+  }
+
   const outDir = path.resolve("e2e/out");
   if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
 
