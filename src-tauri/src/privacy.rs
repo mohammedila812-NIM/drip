@@ -24,14 +24,9 @@ pub fn is_private(exe: &str, title: &str, presentation_mode: bool) -> bool {
     }
 
     let title_lower = title.to_ascii_lowercase();
-    if title_lower.contains("inprivate")
+    title_lower.contains("inprivate")
         || title_lower.contains("incognito")
         || title_lower.contains("private browsing")
-    {
-        return true;
-    }
-
-    false
 }
 
 #[cfg(test)]

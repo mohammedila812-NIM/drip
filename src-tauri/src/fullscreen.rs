@@ -49,10 +49,10 @@ impl FullscreenDebouncer {
             self.candidate_since_ms = now_ms;
         }
 
-        if self.candidate_state != self.current_state {
-            if now_ms.saturating_sub(self.candidate_since_ms) >= self.debounce_ms {
-                self.current_state = self.candidate_state;
-            }
+        if self.candidate_state != self.current_state
+            && now_ms.saturating_sub(self.candidate_since_ms) >= self.debounce_ms
+        {
+            self.current_state = self.candidate_state;
         }
 
         self.current_state
